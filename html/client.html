@@ -1,0 +1,124 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html>
+  <head>
+    <title>The Standard Client</title>
+	<meta name="Keywords" content="DX Cluster, DXSpider, Spider, Packet Cluster, DXCluster, Pavillion Software, AK1A, AX25, AX.25, WWV, Packet Radio, Amateur Radio, Propagation, DX, DXing, G1TLH, GB7TLH, Dirk Koopman, Mailing list, Linux, RedHat, PERL">
+	<meta name="Description" content="Software and systems for realtime digital communications between amateur radio stations for the provision of information on propagation conditions and stations operating">
+	<meta name="Author" content="Dirk Koopman G1TLH">
+    <link rel=stylesheet href="style.css" type="text/css" title="default stylesheet">
+  </head>
+
+  <body TEXT="#000000" LINK="#0000ff" VLINK="#800080" BGCOLOR="#FFFFFF">
+	<FONT COLOR="#606060"> 
+	  <hr>
+	  <h2>The Standard Client</h2>
+	  <hr>
+	</font>
+	
+	
+	<address><a href="mailto:djk@tobit.co.uk">Dirk Koopman G1TLH</a></address>
+	<p>
+	  <!-- Created: Sun Dec 13 20:25:14 GMT 1998 -->
+	  <!-- hhmts start -->
+Last modified: Sun Apr  1 18:18:19 BST 2001
+<!-- hhmts end -->
+
+	<h4>Introduction</h4>
+
+	The standard client program is written in C and lives in <tt>/spider/src</tt>.
+	It performs the interface function
+	between the cluster daemon (<tt>/spider/perl/cluster.pl</tt>) and 
+	AX25 or Telnet connections for incoming connections.
+	
+	<p>There is a related program called <tt>/spider/perl/console.pl</tt> which,
+	as of version 1.30, is the standard sysop or full duplex telnet user
+	connected interface program. This is a simple screen oriented program
+	that has a bash or shell like command history editing facility as well
+	as a scrolling cluster window with colouration of particular lines of
+	interest (such as DX spots, Announces etc).
+
+
+	<h4>client</h4>
+
+	The client itself is a rather rudimentary program which really
+	only deals with things like line end conventions and noticing when
+	a connection goes away. It is written in C and thus become
+	considerably smaller.
+
+	<P>The client can take up two arguments: a "callsign" and a connection type. 
+
+	<p>The "callsign" can have the following values:-
+	<ol>
+		<p><li>A real callsign (!).
+
+		<P>For normal incoming ax25 connections it is important to make sure that
+		the callsign passed <b>DOES NOT</b> have an SSID (use the %u
+		or %U in <tt>ax25d.conf</tt>). The DXSpider system largely
+		ignores what it regards as 'duplicate' callsigns (and that
+		includes those with SSIDs) except in certain <a
+		href="#special">special</a> cases. 
+
+		<p><li><b>login</b> This will cause a unix like
+		<tt>login:</tt> phase to be run. 
+		
+	</ol>
+
+	<p>The connection type can be:-
+	<ol>
+		<p><li><b>ax25</b> This tells the client to use ax25 line conventions.
+
+		<p><li><b>telnet</b> This tells the client to use normal unix line conventions.
+	</ol>
+
+	<p>The connection type can be missing in which case the default is unix line conventions.
+
+	<p>If both the callsign and the connection are missing then it is
+	assumed that the client is the sysop and uses the callsign set in
+	your local copy of <a href="install.html#dxvar">DXVars.pm</a>.
+
+	<h4>Considerations</h4>
+
+	<a name="special"></a>As mentioned earlier, SSIDs are generally stripped from
+	  callsigns except in two cases:
+	<ol>
+		<p><li>For Cluster node callsigns. Although here in the UK we are issued with
+		special callsigns to run cluster nodes and BBSs, this is not universal. Therefore
+		by marking a callsign as a node you disable SSID checking. You will have to treat
+		incoming cluster callsigns specially in <tt>ax25d.conf</tt> to use this feature (i.e
+		you will have to set up a line specially for that callsign with a %s or %S for the
+		callsign substitution [better just put the callsign you want!]).
+
+		<p><li>The sysop callsign set up in your local copy of 
+		<a href="install.html#dxvar">DXVars.pm</a>. You must call <tt>client.pl</tt> with
+		no parameters for this to work.
+	</ol>
+
+	<h4>Files</h4>
+
+	The client only uses files when in the <b>login</b> phase.  It
+	prints the <tt>/spider/data/issue</tt> file, if it is present, to
+	the user before issuing the <tt>login:</tt> prompt. After a callsign
+	is entered it uses
+	the standard cluster user file to check it.
+
+	<p>Having said all of that the client <em>appears</em> to use the following files and
+	  sends them to the user if they are present:-
+	<ul>
+	  <li><b>/spider/data/issue</b> which is sent before a login prompt.
+	  <li><b>/spider/data/connect</b> which is sent immediately after a successful login.
+	  <li><b>/spider/data/motd</b> which is sent to the user on normal user startup.
+	  <li><b>/spider/data/logout</b> which is sent to user on disconnection.
+	  <li><b>/spider/data/offline</b> which is sent to the user if the cluster daemon 
+		isn't running.
+	</ul>
+
+<!-- Standard Footer!! -->
+	<p>&nbsp;</p>
+	<p>
+	  <FONT COLOR="#606060"><hr></font>
+	<font color="#FF0000" size=-2>
+	  Copyright &copy; 1998 by Dirk Koopman G1TLH. All Rights Reserved<br>
+	</font>
+	<font color="#000000" size=-2>$Id$</font>
+  </body>
+</html>

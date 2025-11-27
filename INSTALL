@@ -1,0 +1,9 @@
+DXSPIDER INSTALLATION
+
+This version of dxspider requires perl5 (it is written entirely in perl5 and
+makes extensive use of perl objects). This program is known to work with
+RedHat 5.1 perl5_004.
+
+For installation instructions see
+
+file:doc/index.html

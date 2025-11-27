@@ -1,0 +1,142 @@
+#!/usr/bin/perl
+#
+# Implement an external "show/dx" command
+#
+# Copyright (c) 1998-2023 Dirk Koopman G1TLH
+#
+
+package main;
+
+# search local then perl directories
+BEGIN {
+	# root of directory tree for this system
+	$root = "/spider"; 
+	$root = $ENV{'DXSPIDER_ROOT'} if $ENV{'DXSPIDER_ROOT'};
+	
+	unshift @INC, "$root/perl";	# this IS the right way round!
+	unshift @INC, "$root/local";
+
+	our $local_data = "$root/local_data";
+	our $data = "$root/data";
+}
+
+#no warnings;
+
+use IO::Handle;
+use DXUtil;
+use Bands;
+use Spot;
+use VE7CC;
+use DXCommandmode;
+use DXUser;
+use DXM;
+
+$Spot::spotcachedays = 0;
+$Spot::readback = 0;
+
+
+STDOUT->autoflush(1);
+Spot::init();
+Bands::load();
+Prefix::init();
+DXUser::init(0);
+DXM::load();
+
+my $call = 'N0CALL';
+my $self = bless {_nospawn => 1, width => 80, call=>$call, lang=>'en' }, 'DXCommandmode' ;
+$self->{user} = DXUser::get($call);
+my $wantreal = 0;
+
+while ($ARGV[0] =~ /^-+/) {
+	if ($ARGV[0] =~ /^-+[?h]/i) {
+		help();
+		exit(2);
+	}
+	$wantreal = 1 if $ARGV[0] =~ /^-+r/i;
+	$ve7cc = 1 if $ARGV[0] =~ /^-+v/i;
+	if ($ARGV[0] =~ /^-+w$/i && $ARGV[1] && $ARGV[1] =~ /^\d+$/) {
+		$self->{width} = $ARGV[1];
+		shift @ARGV;
+	}
+	if ($ARGV[0] =~ /^-+c/i && $ARGV[1] && is_callsign(uc $ARGV[1])) {
+		$call = uc $ARGV[1];
+		my $ref = DXUser::get($call);
+		if ($ref) {
+			$self->{call} = $call;
+			$self->{user} = $ref;
+		}
+		shift @ARGV;
+	}
+	$self->{user}->wantgrid(1), ++$wantreal if $self->{user} && $ARGV[0] =~ /^-+(wa|wg)/i;
+	$self->{user}->wantusstate(1), ++$wantreal if $self->{user} && $ARGV[0] =~ /^-+(wa|wu)/i;
+	$self->{user}->wantdxitu(1), ++$wantreal if $self->{user} && $ARGV[0] =~ /^-+(wa|wi)/i;
+	$self->{user}->wantdxcq(1), ++$wantreal if $self->{user} && $ARGV[0] =~ /^-+(wa|wc)/i;
+
+	shift @ARGV;
+}
+
+$self->{ve7cc} = $ve7cc;
+
+$dxdir = "/spider/cmd/show";
+$dxcmd = "dx.pl";
+$s = readfilestr($dxdir, $dxcmd);
+
+eval $s;
+die $@ if $@;
+
+
+$expr = join ' ', @ARGV if @ARGV;
+
+for (;;) {
+	if ($expr) {
+		$myexpr = $expr;
+		$myexpr = 'real ' . $myexpr if $wantreal && $myexpr !~ /\breal\b/;
+	} else {
+		print "show/dx: ";
+		$myexpr = <STDIN>;
+		last unless defined $myexpr;
+		chomp $myexpr;
+		last if $myexpr =~ /^q$/i;
+		$myexpr = 'real ' . $myexpr if $wantreal && $myexpr !~ /\breal\b/;
+	}
+
+	my @out = map {"$_\n"} handle($self, $myexpr);
+	shift @out;   # remove return code
+	print @out;
+	last if $expr;
+}
+
+exit @out > 0 ? 0 : 1;
+
+sub help
+{
+	print qq{A static TEST Program that allows standalone sh/dx queries
+from the command line.
+
+$0: Usage (examples)
+    showdx on 40m 
+    showdx 50 on 40m 
+    showdx by g1tlh
+    showdx -v -c g1tlh by g1tlh
+    showdx -w 132 -wc -wg -wu 50 on 40m 
+    
+$0: Arguments:
+    -?:
+    -h: print this text.
+    -c <callsign>: pretend to be this callsign
+    -r: set 'real' mode (a.k.a show/fdx) (saves typing 'real ' in the query)
+    -v: output in VE7CC computer friendly mode.
+    -w <width>: use this width 
+    -wc: set want cq zones
+    -wg: set want grid squares
+    -wi: set want itu zones
+    -wu: set want US states
+    -wa: set all of the above
+
+    NOTE: setting any of -wc, -wg, -wi, -wu flags implies adding 'real ' to 
+          the query, if not already present.
+};
+}
+
+sub dbg {};
+sub isdbg {};

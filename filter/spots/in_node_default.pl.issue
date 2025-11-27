@@ -1,0 +1,11 @@
+{
+   "filter1":{
+      "reject":{
+         "asc":"($r->[3]=~m{ft[84]}i)",
+         "code":null,
+         "user":"info {ft[84]}"
+      }
+   },
+   "name":"in_node_default.pl",
+   "sort":"spots"
+}

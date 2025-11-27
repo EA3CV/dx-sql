@@ -1,0 +1,366 @@
+s<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML>
+  <HEAD>
+	<TITLE>DX Spider Installation</TITLE>
+	<meta name="Keywords" content="DX Cluster, DXSpider, Spider, Packet Cluster, DXCluster, Pavillion Software, AK1A, AX25, AX.25, WWV, Packet Radio, Amateur Radio, Propagation, DX, DXing, G1TLH, GB7TLH, Dirk Koopman, Mailing list, Linux, RedHat, PERL">
+	<meta name="Description" content="Software and systems for realtime digital communications between amateur radio stations for the provision of information on propagation conditions and stations operating">
+	<meta name="Author" content="Dirk Koopman G1TLH">
+    <link rel=stylesheet href="style.css" type="text/css" title="default stylesheet">
+
+  </HEAD>
+
+  <body TEXT="#000000" LINK="#0000ff" VLINK="#800080" BGCOLOR="#FFFFFF">
+	<FONT COLOR="#606060" face="Verdana,Helvetica,Swiss,Arial"> 
+	  <hr>
+	  <h2>Installing DX Spider (on Redhat 5.1)</h2>
+	  <hr>
+	</font>
+
+	<address><A HREF="mailto:ip@g8sjp.demon.co.uk">Iain Phillips G0RDI</A></address>
+<!-- Created: Wed Dec  2 16:40:25 GMT 1998 -->
+<!-- hhmts start -->
+Last modified: Tue Sep 18 17:54:45 BST 2001
+<!-- hhmts end -->
+	<P>This HOWTO describes the installation for DX Spider v1.30 on a "vanilla" 
+	  <A href="http://www.redhat.com">RedHat</A> 5.1 platform, 
+	  and assumes that you have started with a clean disk, with nothing other than the standard 
+	  Red Hat 5.1 distribution. I always select 'everything', and that seems to ensure that 
+	  nothing is missed out :-) [ more normal people may like to try with less <em>Ed</em> ].
+
+	<p><b><i>WARNING</i></b> The perl on the vanilla RedHat 5.2
+	(perl-5.004m4-1.i386.rpm) is <em>BROKEN</em>, please use the one
+	in the <a href="../download/index.html#perl">Download</a> section.
+
+	<p>The crucial ingredient for all of this is <a href="http://www.perl.org">Perl 5.004</a>. Now I know
+	  Perl 5.005 is out and this will almost certainly work with it, but 
+	  <A Href="http://www.redhat.com">RedHat</A> 5.1 comes with 5.004. 
+	  <em>Be Warned</em> earlier versions of <A Href="http://www.redhat.com">RedHat</A> 
+	  <b>do not</b> come with 5.004 as standard, you need to 
+	  <a href="ftp://upgrade.redhat.com">upgrade</a>
+
+	<P>In addition to the standard Red Hat distribution you will require the following <A HREF="http://www.cpan.org/CPAN.html">CPAN</A> modules:
+	<p>
+	<dir>
+		<a href="http://www.cpan.org/modules/by-module/MD5/MD5-1.7.tar.gz">MD5-1.7.tar.gz</a><BR>
+		<a href="http://www.cpan.org/modules/by-module/Data/Data-Dumper-2.10.tar.gz">Data-Dumper-2.10.tar.gz</a><BR>
+		<a href="http://www.cpan.org/modules/by-module/Date/TimeDate-1.08.tar.gz">TimeDate-1.08.tar.gz</a><BR>
+		<a href="http://www.cpan.org/modules/by-module/IO/IO-1.20.tar.gz">IO-1.20.tar.tgz</a> (only on perl 5.00503 and below, do: 'perl -v' to find out what version you have)<BR>
+		<a href="http://www.cpan.org/modules/by-module/Net/Net-Telnet-3.02.tar.gz">Net-Telnet-3.02.tar.gz</a><BR>
+		<a href="http://www.cpan.org/modules/by-module/Curses/Curses-1.06.tar.gz">Curses-1.06.tar.gz</a><BR>
+        <a href="http://www.cpan.org/modules/by-module/Time/Time-HiRes-01.20.tar.gz">Time::Hires</a>
+	</DIR>
+
+	<p>The modules above are the current versions found at <a href="http://www.cpan.org">www.cpan.org</a> in the appropriate directories -
+	you can click on the links (above) to download them - particularly useful if you use the Lynx text HTML browser from your Linux box.
+	You may wish to check for more recent versions of these modules and use the newer ones if they are available.</p>
+
+	<br>
+
+	<P>You'll also need the AX25 utility package. There is much debate about what is "best", what is "better". What works for 5.1 is this: -
+	<p>
+	<DIR>
+		ax25-utils-2.1.42a-1.i386.rpm
+	</DIR>
+	
+	<P>This can be found at (among other places) <A HREF="ftp://contrib.redhat.com/libc6">ftp://contrib.redhat.com</A>. Note that no attempt is made within this document to describe the steps necessary to install and commission the AX25 kernel package. It remains the responsibility of the reader to have sufficient knowledge and expertise to make this part of the system operation (and to be satisfied that it <B><I>is </B></I>operational) before attempting to install DX Spider. Read the AX25-HOWTO and ask around if you
+ still have trouble after that.
+
+	<P>The last "must have" is the DX Spider distribution itself, and this is available via: -
+
+	<p>
+	<DIR>
+		<A HREF="../download/index.html">The DX Spider Software</A>
+	</DIR>
+
+	<p>We can now begin:-
+	<P>
+	<OL>
+	  
+	  <p><LI>Copy the CPAN modules listed above to a convenient place on your computer. For no good reason, I put mine in /usr/local/packages, and the instructions which follow will assume that that's where yours are, too.
+		<P>Log in as 'root', and make sure you're at '/root' before you continue. Here are exactly the commands you must issue next: -
+		<PRE>
+# tar xvfz /usr/local/packages/MD5-1.7.tar.gz
+# cd MD5-1.7
+# perl Makefile.PL
+# make test
+# make install
+# cd ..
+#
+# tar xvfz /usr/local/packages/Data-Dumper-2.10.tar.gz
+# cd Data-Dumper-2.10
+# perl Makefile.PL
+# make test
+# make install
+# cd ..
+#
+# tar xvfz /usr/local/packages/TimeDate-1.08.tar.gz
+# cd TimeDate-1.08
+# perl Makefile.PL
+# make test
+# make install
+# cd ..
+#
+# tar xvfz /usr/local/packages/IO-1.20.tar.gz
+# cd IO-1.20
+# perl Makefile.PL
+# make test
+# make install UNINST=1
+# cd ..
+#
+# tar xvfz /usr/local/packages/Net-Telnet-3.02.tar.gz
+# cd Net-Telnet-3.02
+# perl Makefile.PL
+# make test
+# make install
+# cd ..
+#
+# tar xvfz /usr/local/packages/Curses-1.05.tar.gz
+# cd Curses-1.05
+# perl Makefile.PL
+# make test
+# make install
+# cd ..
+#
+# tar xvfz /usr/local/packages/Time-HiRes-01.20.tar.gz 
+# cd Time-HiRes-01.20
+# perl Makefile.PL
+# make test
+# make install
+# cd ..
+#
+		</pre>
+		<P>Do not fall into the trap of thinking they're all the same, just because they nearly are! Pay particular attention to the instructions of IO, above.
+
+		<p><LI>Create a user to run the cluster under. <B><I><U>UNDER NO CIRCUMSTANCES USE ROOT
+		</B></I></U><P>Again: <B><I><U>DO NOT USE</B></I></U> root.
+		<P>In the instructions which follow, it is assumed that this user is called 'sysop'. You may call it anything you wish. Depending upon your security requirements, you may choose to use an existing user. This will be your choice, not ours!
+		<P># adduser -m sysop
+		<P>Now set a password for the user:-
+		<PRE>
+#
+# passwd sysop
+# New UNIX password:
+# Retype new UNIX password:
+passwd: all authentication tokens updated successfully
+		</PRE>
+		<P># Do not fall into the trap of thinking they're all the same, just because they nearly are! Pay particular attention to the instructions of IO, above.
+		
+		<p><LI>Now unpack the DX Spider distribution, set symbolic links and group permissions like this (assumes that the version we're interested in is 1.9. The distribution tar file may be named slightly differently in your case: -
+		<PRE>
+# cd ~sysop
+# tar xvfz spider-1.9.tar.gz
+# ln -s ~sysop/spider /spider
+# groupadd -g 251 spider       (or another number)
+# vi /etc/group                (or your favorite editor)
+		</PRE>
+		<P>add 'sysop', your own callsign (in my case 'g0rdi' - which will be used as an alias) and 'root' to the group spider. The result should look something like:-
+		<PRE>
+spider:x:251:sysop,g0rdi,root
+		</PRE>
+
+		<p><LI>Next step is to set permissions on the 'spider' directory tree and files:-
+		<PRE>
+# chown -R sysop.spider spider
+# find . -type d -exec chmod 2775 {} \;
+# find . -type f -exec chmod 775 {} \;
+		</PRE>
+		<P>This last step allows various users of group spider to have write access to all the directories. Not really needed for now but will be useful when web interfaces start to appear.
+		
+		<p><LI>In later releases there is a client program written in C. You
+		must <tt>make</tt> this program before you can use it (and you must 
+		remember to to remake with every new release).
+
+		<p>To do this you should:-
+		<PRE>
+# cd /spider/src
+# make
+        </PRE>
+
+		<p>You can continue to use the perl client (<tt>/spider/perl/client.pl</tt>, but
+		support of this will gradually whither away.
+ 
+		<p><LI><a name="connect"></a>If you want to be able to allow people or clusters
+		to login via IP then you will need to set up logins for them.
+
+		<p><pre>
+# useradd -m gb7djk
+# passwd gb7djk
+New UNIX password: 
+Retype new UNIX password: 
+passwd: all authentication tokens updated successfully
+		</pre>
+
+		<p>You can then either alter the default .bashrc so that it
+		contains just one line (assuming you use the default bash
+		shell).
+	
+		<p><PRE>
+exec /spider/perl/client.pl &lt;callsign&gt; telnet
+		</PRE>
+		
+		<p>Alternatively you can alter the <tt>/etc/passwd</tt> thus:-
+
+		<pre>
+fbb:x:505:505::/home/fbb:/bin/bash
+gb7djk:x:506:506::/home/gb7djk:/usr/bin/perl /spider/perl/client.pl gb7djk telnet
+		</pre>
+		
+		Don't forget to give them a real password. The <tt>telnet</tt> argument
+		does two things, it sets the EOL convention to \n rather than
+		AX25's \r and it automatically reduces the privilege of the
+		&lt;callsign&gt; to a 'safe[r]' level.). If the user or other cluster
+		program requires AX25 conventions to operate then you can use 
+		<tt>ax25</tt> instead.
+
+		<p>Another thing you can do is to get <tt>inetd</tt> to listen
+		on a specific port and then start the client up directly. To
+		  do this, create an entry in <tt>/etc/services</tt> with a
+		  port number > 1000 that isn't used elsewhere eg:-
+
+		<p><pre>
+gb7djk     8001/tcp 
+gb7tlh     8002/tcp
+        </pre>
+
+		Then create some lines in <tt>/etc/inetd.conf</tt> that look 
+		like this:-
+		
+		<p><pre>
+gb7djk  stream tcp   nowait   sysop /usr/sbin/tcpd /spider/src/client gb7djk telnet
+gb7tlh  stream tcp   nowait   sysop /usr/sbin/tcpd /spider/src/client gb7tlh telnet
+		</pre>
+
+		Please <b>DON'T</b> run the client as <tt>root</tt> you will only 
+		come to regret it later when the next person finds a security hole
+		in DX Spider (there are bound to be some although I have tried to
+		avoid the obvious ones I could think of).
+
+		<p>The only reason I would use this mechanism is for Internet connections
+		  to other or from other clusters. Don't use this for normal users.
+
+		<p>In the example I have used <tt>tcpd</tt> as the access control 
+		  mechanism to the port. Don't (I can't be bothered to emphasize 
+		  it any more) run a system like this without one, you are asking
+		  for trouble. In fact I use the <a href="http://www.tis.com">TIS
+		  Firewall Toolkit</a> myself, you may find this more intuitive 
+		  to use. The point is that <tt>gb7djk</tt> would only be coming
+		  from one IP address, if it coming from another, it is an imposter!
+
+		<p><b>You are responsible for arranging and looking after your 
+			security - not me.</b>
+
+		<p><LI>As mentioned earlier, for AX25 connections <B><I>you</B></I> are expected to have the AX25 utilities installed, setup, tested and working. See the AX25-HOWTO for more info on this - it really is beyond the scope of this document DX Spider uses ax25d for incoming connections. You need to have entries like this:- 
+		<PRE>
+[ether]        
+NOCALL   * * * * * *  L                                                      
+default  * * * * * *  - sysop /spider/src/client client %u ax25
+&lt;cluster&gt;
+NOCALL   * * * * * *  L                                                       
+default  * * * * * *  - sysop /spider/src/client client %u ax25
+		</PRE>
+		<P>where 'ether' and 'bbs' are appropriate <B><I>KNOWN WORKING</B></I> axport and nrport names respectively. Obviously you can use different names, callsigns or whatever for your purposes, but it is up to you to get it to work. Note I use BPQ over ethernet which why I have the port names I have.
+		
+		<p><LI>Find your <TT>netrom_call</TT> and <TT>ax25_call</TT> programs (which on my system live in <TT>/usr/sbin)</TT> and chmod them so that they are SUID <TT>root</TT> 
+		<PRE>
+# chown root ax25_call netrom_call
+# chmod 4775 ax25_call netrom_call
+		</PRE>
+		<P>This has to be done to allow you to specify the correct callsigns on outgoing connects
+
+		<p><LI><a name="dxvar"></a>Login to your computer as sysop, and create the initial DX Spider parameters necessary to start the cluster for the first time.
+		<PRE>
+$ startx&#9;&#9;&#9;(much easier to use X)
+$ cd /spider
+$ mkdir local
+$ mkdir local_cmd
+$ cp perl/DXVars.pm local
+$ cd local
+$ vi DXVars.pm&#9;&#9;&#9;(or 'joe DXVars.pm' if you're a WordStar fan ;-)
+		</PRE>
+		<P>Using the distributed DXVars.pm as a a template, set your cluster callsign, sysop callsign and other user info to suit your own environment. Note that this a perl file which will be parsed and executed as part of the cluster. If you get it wrong then perl will complain when you start the cluster process.
+		<P><b>PLEASE USE CAPITAL LETTERS FOR CALLSIGNS</B>
+		<P>DON'T alter the DXVars.pm (or any other file) in /spider/perl, they are overwritten with every release. Any files or commands you place in /spider/local or /spider/local_cmd will automagically be used in preference to the ones in /spider/perl EVEN whilst the cluster is running!
+		<PRE>
+:x
+   
+$ cd ../perl
+		</PRE>
+		<P>Next, run the following script, which will create the basic user file with you as the sysop.
+		<PRE>
+$ create_sysop.pl
+		</PRE>
+		<P>Now attempt to startup the cluster program and see whether all the various rivets are flying in approximate formation...
+		<PRE>
+$ cluster.pl
+DXSpider DX Cluster Version 1.9
+Copyright (c) 1998 Dirk Koopman G1TLH
+loading prefixes ...
+loading band data ...
+loading user file system ...
+starting listener ...
+reading existing message headers
+reading cron jobs
+orft we jolly well go ...
+		</PRE>
+		
+		<p><LI>now log in again (as 'sysop') or start another rxvt or xterm 
+
+		<PRE>
+$ client.pl
+		</PRE>
+		<P>at the cluster prompt (which will look something like):-
+		<PRE>
+G1JIM de GB7JIM 12-Dec-98 1718Z &gt;
+		</pre>
+		Type:
+		<pre>
+set/node GB7XXX
+		</PRE>
+		<p>(where 'GB7XXX' is a DX cluster which you expect to connect to or from).
+		<P>Now shut the cluster down by simply typing 'shutdown' at the prompt.
+		<P>The cluster and the client should both go back to prompts 
+		<p>The callsigns should be the sysop callsign and the cluster callsign
+		  as per your modified DXVars.pm. You can check that the cluster 
+		  connections will work by:-
+		<pre>
+$ client.pl gb7xxx      (doesn't have to be uppercase).
+PC38^GB7JIM^~           &lt;- the cluster thinks this is a cluster
+^C                      &lt;- to get out
+		</pre>
+		<p>
+	  <li> Finally try:-
+	    <pre>
+$ console.pl 
+        </pre>
+		<p>This is the normal way (as of version 1.30) of running the cluster system
+		as a sysop. It is a simple program client program that allows you to
+        press &lt;up-arrow> &lt;down-arrow> and use all the usual line editting
+		keystrokes that you can use on the unix shell under linux or bash. 
+		<p>In addition, it will highlight certain type of lines in particular
+		colours and allow you to scroll the top window up and down with the
+		&lt;page-up> and &lt;page-down> keys.
+	</ol>
+
+	<p>You should now have a basic working system. Best of luck! Can I now draw your attention to
+	  the <a href="http://www.dxcluster.org/spider">Bug Reporting</a> System. 
+
+	<p>Can I commend to you the Announcements mailing list to which you may 
+	  <a href="mailto:dxspider-announce-request@dxcluster.org?subject=Subscribe&body=subscribe%20dxspider-announce%0D%0A--%0D%0A">subscribe</a>.
+	  This is a low volume mailing list which will send you announcements of new patches and 
+	  such like things as they arise.
+
+	<p>If you like what you see and want to be a part of the ongoing development then 
+	  <a href="mailto:dxspider-support-request@dxcluster.org?subject=Subscribe&body=subscribe%20dxspider-support%0D%0A--%0D%0A">subscribe</a> 
+	  to the support mailing list which will be the focus of any discussion/bug fixing etc.
+
+<!-- Standard Footer!! -->
+	<p>&nbsp;</p>
+	<p>
+	  <FONT COLOR="#606060"><hr></font>
+	<font color="#FF0000" size=-2>
+	  Copyright &copy; 1998 by Dirk Koopman G1TLH and Iain Phillips G0RDI. All Rights Reserved<br>
+	</font>
+	<font color="#000000" size=-2>$Id$</font>
+
+  </BODY>
+</HTML>

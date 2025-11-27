@@ -1,0 +1,11 @@
+{
+   "filter2":{
+      "accept":{
+         "asc":"($r->[5]==226)",
+         "code":null,
+         "user":"call_dxcc k"
+      }
+   },
+   "name":"EA3CV",
+   "sort":"rbn"
+}

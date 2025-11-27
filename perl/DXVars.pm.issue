@@ -1,0 +1,77 @@
+# -*- perl -*-
+# The system variables - those indicated will need to be changed to suit your
+# circumstances (and callsign)
+#
+# Copyright (c) 1998-2007 - Dirk Koopman G1TLH
+#
+#
+
+package main;
+
+# List of nodes that make up the cluster
+#@cluster_nodes = qw(NODE-1 NODE-2 NODE-3);
+
+# this really does need to change for your system!!!!			   
+# use CAPITAL LETTERS
+$mycall = "Q1QQQ-2";
+
+# your name
+$myname = "Fred";
+
+# Your 'normal' callsign (in CAPTTAL LETTERS) 
+$myalias = "Q1QQQ";
+
+# Your latitude (+)ve = North (-)ve = South in degrees and decimal degrees
+$mylatitude = +52.0;
+
+# Your Longtitude (+)ve = East, (-)ve = West in degrees and decimal degrees
+$mylongitude = +0.0;
+
+# Your locator (USE CAPITAL LETTERS)
+$mylocator = "JO02AA";
+
+# Your QTH (roughly)
+$myqth = "SomeTown, SomeState";
+
+# Your e-mail address
+$myemail = "qqq@gmail.com";
+
+# the country codes that my node is located in
+# 
+# for example 'qw(EA EA8 EA9 EA0)' for Spain and all its islands.
+# if you leave this blank then it will use the country code for
+# your $mycall. This will suit 98% of sysops (including GB7 BTW).
+#
+
+@my_cc = qw();
+
+# are we debugging ?
+@debug = qw(chan state msg cron connect progress nologchan);
+
+# are we doing xml?
+$do_xml = 0;
+
+$Internet::contest_host = "contest.dxtron.com";
+
+# Backend selection
+$db_backend = 'file'; # 'file', 'sqlite', 'mysql'
+
+# Data for MySQL/MariaDB
+$mysql_admin_user = "root";
+$mysql_admin_pass = "your_pass";
+$mysql_db   = "dxspider";
+$mysql_user = "your_user";
+$mysql_pass = "your_pass";
+$mysql_host = "127.0.0.1";
+
+# Data for SQLite
+$sqlite_dsn = "dbi:SQLite:dbname=$root/local_data/dxspider.db";
+$sqlite_dbuser = "";
+$sqlite_dbpass = "";
+
+# the SQL Spots database DBI dsn
+#$dsn = "dbi:SQLite:dbname=$root/data/dxspider.db";
+#$dbuser = "";
+#$dbpass = "";
+
+1;

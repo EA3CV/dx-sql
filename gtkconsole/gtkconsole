@@ -1,0 +1,650 @@
+#!/usr/bin/perl -w
+#
+# A GTK based console program
+#
+# usage: gtkconsole [<callsign>] [<host> <port>]
+#
+# Copyright (c) 2006-2007 Dirk Koopman G1TLH
+#
+#
+#
+
+use strict;
+
+our $root;
+
+# search local then perl directories
+BEGIN {
+	# root of directory tree for this system
+	$root = "/spider";
+	$root = $ENV{'DXSPIDER_ROOT'} if $ENV{'DXSPIDER_ROOT'};
+}
+
+use Glib;
+use Gtk2 qw(-init);
+use Gtk2::Helper;
+use Gtk2::SimpleMenu;
+use Data::Dumper;
+use IO::File;
+
+use Screen;
+
+use vars qw(@modules $font);
+
+@modules = ();					# is the list of modules that need init calling
+								# on them. It is set up by each  'use'ed module
+								# that has Gtk stuff in it
+use IO::Socket::INET;
+
+our @month = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
+
+# various GTK handles
+our $main;						# the main screen
+our $scr_width;					# calculated screen dimensions
+our $scr_height;
+our ($dx, $cmd, $ann, $wcy, $wwv, $chat); # scrolling list windows
+our $bot;						# the cmd entry window
+our $date;						# the current date
+
+# other windows
+our $annwin;					# the announcement window handle
+our $dxwin;						# the dx spot window handle
+our $wwvwin;					# wwv window handle
+our $wcywin;					# wcy window handle
+our $chatwin;					# chat window handle
+
+# wants
+our ($wantann, $wantdx, $wantwwv, $wantwcy, $wantchat) = (1, 1, 1, 1, 1);
+
+require "$root/local/DXVars.pm" if -e "$root/local/DXVars.pm";
+
+our ($version, $subversion, $build);
+require "$root/perl/Version.pm";
+
+our $VERSION = "$version.$subversion build $build";
+
+# read in the user data
+our $userfn = "$ENV{HOME}/.gtkconsole_data";
+our $user = read_user_data();
+our $call;
+our $passwd;
+our $host = 'localhost';
+our $port = 7300;
+
+#
+# read in gtkconsole file
+#
+
+Gtk2::Rc->set_default_files("$root/gtkconsole/gtkconsolerc", "$ENV{HOME}/.gtkconsolerc", ".gtkconsolerc");
+Gtk2::Rc->reparse_all;
+
+# sort out a callsign, host and port, looking in order
+#  1. the command line
+#  2. any defaults in the user data;
+#  3. poke about in any spider tree that we can find
+#
+
+if (@ARGV) {
+	$call = uc shift @ARGV;
+	$host = shift @ARGV if @ARGV;
+	$port = shift @ARGV if @ARGV;
+}
+
+unless ($call) {
+	$call = $main::myalias;
+}
+
+unless ($host) {
+	my $node = $user->{clusters}->{$user->{node}};
+
+	if ($node->{call} || $user->{call}) {
+		$host = $node->{host};
+		$port ||= $node->{port};
+	}
+
+	unless ($host) {
+		if (-e "$root/local/Listeners.pm") {
+			require  "$root/local/Listeners.pm";
+			$host = $main::listen->[0]->[0];
+			$port = $main::listen->[0]->[1];
+			$host ||= '127.0.0.1';
+			$host = "127.0.0.1" if !$host && ($host eq '0.0.0.0' || $host eq '::');
+			$port ||= 7300;
+		}
+	}
+}
+
+$call ||= '';
+$host ||= '';
+$port ||= '';
+die "You need a callsign ($call), a hostname($host) and a port($port) to proceed" unless $call && $host && $port;
+
+#
+# start of GTK stuff
+#
+
+gtk_create_main_screen();
+
+$main->set_title("DXSpider gtkconsole $VERSION - $call \@ $host:$port");
+
+# connect and send stuff
+my $sock = IO::Socket::INET->new(PeerAddr=>$host, PeerPort=>$port);
+die "Cannot connect to  $/$port ($!)\n" unless $sock;
+sendmsg($call);
+sendmsg($passwd) if $passwd;
+sendmsg('set/gtk');
+sendmsg('set/page 500');
+sendmsg('set/nobeep');
+
+my $sock_helper = Gtk2::Helper->add_watch($sock->fileno, 'in', \&tophandler, $sock);
+
+# the main loop
+$main->show_all;
+$bot->grab_focus;
+Gtk2->main;
+exit(0);
+
+#
+# handlers
+#
+
+sub updatetime
+{
+	$_[0]->set_text(cldatetime(time));
+	1;
+}
+
+sub bothandler
+{
+	my ($self, $data) = @_;
+	my $msg = $self->get_text;
+	$msg =~ s/\r?\n$//;
+	$self->set_text('');
+	$self->grab_focus;
+	sendmsg($msg);
+}
+
+my $rbuf = '';
+
+sub tophandler
+{
+	my ($fd, $condx, $socket) = @_;
+
+	my $offset = defined $rbuf ? length $rbuf : 0;
+	my $l = sysread($socket, $rbuf, 1024, $offset);
+	if (defined $l) {
+		if ($l) {
+			while ($rbuf =~ s/^([^\015\012]*)\015?\012//) {
+				my $msg = $1;
+				handlemsg($msg);
+			}
+		} else {
+			Gtk2->main_quit;
+		}
+	} else {
+		Gtk2->main_quit;
+	}
+	1;
+
+}
+
+sub handlemsg
+{
+	my $line = shift;
+
+	# this is truely evil and I bet there is a better way...
+	chomp $line;
+	my $list;
+	if ($line =~ /^'\w{2,4}',/) {
+		$list = eval qq([$line]);
+	} else {
+		$list = ['cmd', $line];
+	}
+	unless ($@) {
+		no strict 'refs';
+		my $cmd = shift @$list;
+		my $handle = "handle_$cmd";
+		if (__PACKAGE__->can($handle)) {
+			__PACKAGE__->$handle($list);
+		} else {
+			unshift @$list, $cmd;
+			__PACKAGE__->handle_def($list);
+		}
+	}
+}
+
+sub handle_cmd
+{
+	my $self = shift;
+	my $ref = shift;
+	my ($t, $ts) = (time, '');
+	my $s;
+	$s = ref $ref ? join ', ',@$ref : $ref;
+
+	if (($cmd->{lasttime}||0) != $t) {
+		$ts = tim($t);
+		$cmd->{lasttime} = $t;
+	}
+
+	chomp $s;
+	$cmd->add_data([$ts,  $s]);
+}
+
+sub handle_def
+{
+	my $self = shift;
+	my $ref = shift;
+	my ($t, $ts) = (time, '');
+	my $s;
+	$s = ref $ref ? join(', ', @$ref) : $ref;
+	if (($cmd->{lasttime}||0) != $t) {
+		$ts = tim($t);
+		$cmd->{lasttime} = $t;
+	}
+	$cmd->add_data([$ts,  $s]);
+}
+
+sub handle_dx
+{
+	my $self = shift;
+	my $ref = shift;
+	my ($t, $ts) = (time, '');
+
+	if (($dx->{lasttime}||0) != $t) {
+		$ts = tim($t);
+		$dx->{lasttime} = $t;
+	}
+	$dx->add_data([$ts,  @$ref[0,1,15,3,4,16], stim($ref->[2]) ]);
+	$dxwin->show_all;
+}
+
+sub handle_ann
+{
+	my $self = shift;
+	my $ref = shift;
+	my ($t, $ts) = (time, '');
+#	my $s;
+#	$s = ref $ref ? (join ', ',@$ref) : $ref;
+
+	if (($ann->{lasttime}||0) != $t) {
+		$ts = tim($t);
+		$ann->{lasttime} = $t;
+	}
+
+#	chomp $s;
+	$ann->add_data([$ts,  @$ref[3,1,2]]);
+	$annwin->show_all;
+}
+
+sub handle_wcy
+{
+	my $self = shift;
+	my $ref = shift;
+#	my $s;
+#	$s = ref $ref ? join ', ',@$ref : $ref;
+
+#	chomp $s;
+
+	$wcy->add_data([tim(),  @$ref[10,4,5,3,6,2,7,8,9,1] ]);
+	$wcywin->show_all;
+}
+
+sub handle_wwv
+{
+	my $self = shift;
+	my $ref = shift;
+#	my $s;
+#	$s = ref $ref ? join ', ',@$ref : $ref;
+
+#	chomp $s;
+	$wwv->add_data([tim(),  @$ref[6,2,3,4,5,1] ]);
+	$wwvwin->show_all;
+}
+
+
+sub handle_chat
+{
+	my $self = shift;
+	my $ref = shift;
+	my ($t, $ts) = (time, '');
+	my $s;
+	$s = ref $ref ? (join ', ',@$ref) : $ref;
+
+	if (($ann->{lasttime}||0) != $t) {
+		$ts = tim($t);
+		$ann->{lasttime} = $t;
+	}
+
+	chomp $s;
+	$chat->add_data([$ts,  @$ref[3,1,2]]);
+	$chatwin->show_all;
+}
+
+
+
+#
+# subroutine
+#
+
+sub sendmsg
+{
+	my $msg = shift;
+	$sock->print("$msg\n");
+}
+
+sub tim
+{
+	my $t = shift || time;
+	return sprintf "%02d:%02d:%02d", (gmtime($t))[2,1,0];
+}
+
+sub stim
+{
+	my $t = shift || time;
+	return sprintf "%02d:%02d", (gmtime($t))[2,1];
+}
+
+# get a zulu time in cluster format (2300Z)
+sub ztime
+{
+	my $t = shift;
+	$t = defined $t ? $t : time;
+	my $dst = shift;
+	my ($sec,$min,$hour) = $dst ? localtime($t): gmtime($t);
+	my $buf = sprintf "%02d%02d%s", $hour, $min, ($dst) ? '' : 'Z';
+	return $buf;
+}
+
+# get a cluster format date (23-Jun-1998)
+sub cldate
+{
+	my $t = shift;
+	$t = defined $t ? $t : time;
+	my $dst = shift;
+	my ($sec,$min,$hour,$mday,$mon,$year) = $dst ? localtime($t) : gmtime($t);
+	$year += 1900;
+	my $buf = sprintf "%2d-%s-%04d", $mday, $month[$mon], $year;
+	return $buf;
+}
+
+# return a cluster style date time
+sub cldatetime
+{
+	my $t = shift;
+	my $dst = shift;
+	my $date = cldate($t, $dst);
+	my $time = ztime($t, $dst);
+	return "$date $time";
+}
+
+sub read_user_data
+{
+	my $u;
+
+	if (-e $userfn) {
+		my $fh = new IO::File $userfn;
+		my $s = undef;
+		if ($fh) {
+			local $/ = undef;
+			$s = <$fh>;
+			$fh->close;
+		}
+		eval "\$u = $s";
+	}
+	unless ($u) {
+		print "$userfn missing or unreadable, starting afresh!\n";
+
+		$u = {
+			  clusters => {
+						   'LOCAL' => {host => '127.0.0.1', port => 7300},
+						   'GB7DJK' => {host => 'gb7djk.dxcluster.net', port => 7300},
+						   'WR3D' => {host => 'wr3d.dxcluster.net', port => 7300},
+						   'GB7BAA' => {host => 'gb7baa.dxcluster.net', port => 7300},
+						  },
+			  node => 'LOCAL',
+			  call => $main::myalias,
+			 };
+		write_user_data($u);
+	}
+	return $u;
+}
+
+sub write_user_data
+{
+	my $u = shift;
+
+	my $fh = new IO::File ">$userfn";
+	if ($fh) {
+		my $dd = new Data::Dumper([ $u ]);
+		$dd->Indent(1);
+		$dd->Quotekeys(0);
+		$dd->Terse(1);
+		$fh->print($dd->Dumpxs);
+		$fh->close;
+		return 1;
+	}
+	return 0;
+}
+
+sub def_menu_callback
+{
+
+}
+
+sub set_win
+{
+	my $var = shift;
+	$$var = shift;
+}
+
+sub gtk_create_main_screen
+{
+	$main = new Gtk2::Window('toplevel');
+	my $scr = $main->get_screen;
+	$scr_width = $scr->get_width;
+	$scr_width = 700 if $scr_width > 700;
+	$scr_height = int ($scr->get_height * 0.66);
+	$main->set_default_size($scr_width, $scr_height);
+	$main->signal_connect('delete_event', sub { Gtk2->main_quit; });
+
+	# the main vbox
+	my $vbox = new Gtk2::VBox(0, 1);
+	$main->add($vbox);
+
+	my $menutree = [
+					_File => {
+							  item_type => '<Branch>',
+							  children => [
+										   _Quit => {
+													 callback => sub { Gtk2->main_quit; },
+													 callback_action => 1,
+													 accelerator => '<ctrl>Q',
+													}
+										  ],
+							 },
+					_Screens => {
+								 item_type =>'<Branch>',
+								 children => [
+											  _Dx => {
+													  item_type => '<CheckMenuItem>',
+													  callback => sub { set_win(\$wantdx, $@)},
+													 },
+											  _Announce => {
+															item_type => '<CheckItem>',
+															callback => sub { set_win(\$wantann, $@)},
+														   },
+											  _Chat => {
+														item_type => '<CheckItem>',
+														callback => sub { set_win(\$wantchat, $@)},
+													   },
+											  _WWV => {
+													   item_type => '<CheckItem>',
+													   callback => sub { set_win(\$wantwwv, $@)},
+													  },
+											  _WCY => {
+													   item_type => '<CheckItem>',
+													   callback => sub { set_win(\$wantwcy, $@)},
+													  },
+											 ],
+								},
+
+					_Help => {
+							  item_type => '<Branch>',
+							  children => [
+										   _About => {
+													  callback_action => 9,
+													 },
+										  ],
+							 },
+
+				   ];
+
+	my $menu = Gtk2::SimpleMenu->new(menu_tree => $menutree, default_callback => \&def_menu_callback, user_data => $user);
+	$vbox->pack_start($menu->{widget}, 0, 1, 0);
+
+
+	# a paned hbox is packed as the bottom of the vbox
+#	my $bhpane = Gtk2::HPaned->new;
+#	$vbox->pack_end($bhpane, 1, 1, 0);
+
+	# now create the lh and rh panes
+#	my $lhvpane = Gtk2::VPaned->new;
+#	my $rhvpane = Gtk2::VPaned->new;
+#	$bhpane->pack1($lhvpane, 1, 0);
+#	$bhpane->pack2($rhvpane, 1, 0);
+
+
+	# The command list
+#	my $lhvbox = Gtk2::VBox->new(0, 1);
+	$cmd = Screen::List->new(fields => [
+										RxTime => 'tt',
+										Information => 'ttlong',
+									   ],
+							 size => [$scr_width, $scr_height * 0.66],
+							);
+	$vbox->pack_start($cmd->widget, 1, 1, 0);
+
+
+	# callsign and current date and time
+	my $hbox = new Gtk2::HBox;
+	my $calllabel = new Gtk2::Label($call);
+	my $date = new Gtk2::Label(cldatetime(time));
+	$date->{tick} = Glib::Timeout->add(1000, \&updatetime, $date);
+	$hbox->pack_start( $calllabel, 0, 1, 0 );
+	$hbox->pack_end($date, 0, 1, 0);
+	$vbox->pack_start($hbox, 0, 1, 0);
+	$vbox->pack_start(Gtk2::HSeparator->new, 0, 1, 0);
+
+	# the bottom handler
+	$bot = new Gtk2::Entry;
+	$bot->set_editable(1);
+	$bot->signal_connect('activate', \&bothandler);
+	$bot->can_default(1);
+	$vbox->pack_end($bot, 0, 1, 0);
+#	$lhvpane->pack2($lhvbox, 1, 0);
+	$bot->grab_default;
+
+	#
+	#
+	#
+
+	#
+	# The announce list
+	$annwin = new Gtk2::Window('toplevel');
+	$ann = Screen::List->new(fields =>[
+									   RxTime => 'tt',
+									   From => 'tt',
+									   To => 'tt',
+									   Announcement => 'ttlesslong',
+									  ],
+							 hint => 1,
+							 frame => 'Announcements',
+							 size => [$scr_width * 0.85, $scr_height * 0.25],
+							);
+	$annwin->add($ann->widget);
+#	$annwin->show_all;
+
+	# The announce list
+	$chatwin = new Gtk2::Window('toplevel');
+	$chat = Screen::List->new(fields =>[
+									   RxTime => 'tt',
+									   From => 'tt',
+									   To => 'tt',
+									   Chat => 'ttlesslong',
+									  ],
+							 hint => 1,
+							 frame => 'Chat',
+							 size => [$scr_width * 0.85, $scr_height * 0.25],
+							);
+	$chatwin->add($chat->widget);
+#	$annwin->show_all;
+
+	# DX window
+	$dxwin = new Gtk2::Window('toplevel');
+	$dx = Screen::List->new(fields => [
+									   'RxTime' => 'tt',
+									   'QRG' => 'qrg',
+									   'DX Call' => 'tt',
+									   'Grid' => 'tt',
+									   'Remarks' => 'ttshort',
+									   'By' => 'tt',
+									   'Grid' => 'tt',
+									   'TxTime' => 'tt',
+									  ],
+							policy => [qw(never automatic)],
+							hint => 1,
+							frame => "DX Spots",
+							maxsize => 500,
+							size => [$scr_width * 0.9, $scr_height * 0.25],
+						   );
+#	$rhvpane->pack1($dx->widget, 1, 0);
+	$dxwin->add($dx->widget);
+#	$dxwin->show_all;
+
+	# The wwv list
+	$wwvwin = new Gtk2::Window('toplevel');
+	#	my $rhvbox = Gtk2::VBox->new(0, 1);
+	$wwv = Screen::List->new( fields =>[
+										RxTime => 'tt',
+										From => 'tt',
+										SFI => 'int',
+										A => 'int',
+										K => 'int',
+										Remarks => 'ttshort',
+										Hour => 'tt'
+									   ],
+							  hint => 1,
+							  policy => ['never', 'automatic'],
+							  frame => 'WWV Data',
+							);
+	$wwvwin->add($wwv->widget);
+#	$wwvwin->show_all;
+
+#	$rhvbox->pack_start($wwv->widget, 1, 1, 0);
+
+	# The wcy list
+	$wcywin = new Gtk2::Window('toplevel');
+	$wcy = Screen::List->new(fields => [
+										RxTime => 'tt',
+										From => 'tt',
+										K => 'int',
+										ExpK => 'int',
+										A => 'int',
+										R => 'int',
+										SFI => 'int',
+										SA => 'tt',
+										GMF => 'tt',
+										Aurora => 'tt',
+										Hour => 'tt'
+									   ],
+							 hint => 1,
+							 policy => ['never', 'automatic'],
+							 frame => 'WCY Data',
+							);
+
+#	$rhvbox->pack_start($wcy->widget, 1, 1, 0);
+#	$rhvbox->set_size_request($scr_width * 0.45, $scr_height * 0.33);
+#	$rhvpane->pack2($rhvbox, 1, 0);
+	$wcywin->add($wcy->widget);
+#	$wcywin->show_all;
+}

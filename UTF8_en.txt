@@ -1,0 +1,156 @@
+UTF-8 Configuration in DXSpider and the Operating System
+
+🌍 Why Use UTF-8 in DXSpider and Its Cluster Network
+
+DXSpider exchanges information between nodes across the globe. This includes:
+
+- Operator names and messages.
+- Beacon data, DX spots, announcements, and user traffic.
+- Exports in JSON, XML, SQL or other modern formats.
+
+Using a universal text encoding ensures full compatibility across all nodes,
+regardless of language or operating system.
+
+
+❌ Problems Without UTF-8
+
+Without UTF-8, the following issues may occur:
+
+- Corrupted characters (`�`, strange symbols).
+- Loss of accents, special characters (ñ, ç), non-Latin letters or emojis.
+- Incompatibility when processing JSON, XML or modern interfaces.
+- Inability to properly display Chinese, Arabic, Cyrillic, Japanese, etc.
+
+
+✅ Benefits of Using UTF-8
+
+Configuring the environment to use UTF-8 enables:
+
+- Correct sending and receiving of all languages.
+- Multilingual text display in the console without errors.
+- Safe processing of structured files and data.
+- Conflict-free operation in international clusters.
+
+UTF-8 is the current standard and supports the full Unicode range, from áéíñ
+to 你好, مرحبا, Привет or 😄.
+
+
+🌐 Most Common UTF-8 Locales
+
+Language              Locale UTF-8
+--------------------- ----------------
+Spanish               es_ES.UTF-8
+English (UK)          en_GB.UTF-8
+English (US)          en_US.UTF-8
+French                fr_FR.UTF-8
+German                de_DE.UTF-8
+Portuguese            pt_PT.UTF-8
+Italian               it_IT.UTF-8
+Russian               ru_RU.UTF-8
+Chinese (Simplified)  zh_CN.UTF-8
+Japanese              ja_JP.UTF-8
+Arabic                ar_SA.UTF-8
+
+Important note:
+To use another language, simply replace es_ES.UTF-8 with the corresponding
+locale.
+
+
+👤 Configuring UTF-8 for the sysop User Only
+
+This setup ensures multilingual compatibility for DXSpider without affecting
+the rest of the system.
+
+1. Ensure the Locale is Available
+
+As root, edit /etc/locale.gen and make sure your language is enabled. For
+example:
+
+	es_ES.UTF-8 UTF-8
+
+Then run:
+
+	sudo locale-gen
+
+2. Configure the Environment for sysop
+
+Edit the file ~sysop/.bashrc:
+
+	nano ~sysop/.bashrc
+
+Add at the end:
+
+	# Spanish UTF-8 locale for sysop
+	export LANG=es_ES.UTF-8
+	export LANGUAGE=es_ES.UTF-8
+	export LC_ALL=es_ES.UTF-8
+
+Optionally, repeat this in ~sysop/.profile to apply it to SSH sessions:
+
+	nano ~sysop/.profile
+
+
+🖥️ Configuring UTF-8 System-Wide
+
+To make UTF-8 the default for all users and services.
+
+1. Enable the Desired Locale (if not already active)
+
+Edit the file:
+
+	sudo nano /etc/locale.gen
+
+Make sure it contains:
+
+	es_ES.UTF-8 UTF-8
+
+Then generate the locales:
+
+	sudo locale-gen
+
+2. Set the Global System Locale
+
+Edit the file:
+
+	sudo nano /etc/default/locale
+
+Recommended content:
+
+	LANG=es_ES.UTF-8
+	LANGUAGE=es_ES.UTF-8
+	LC_ALL=es_ES.UTF-8
+
+3. Reboot or Log Out
+
+To apply the changes, reboot the system:
+
+	sudo reboot
+
+🔎 Verify Active Configuration
+
+After logging in or rebooting:
+
+	locale
+
+You should see:
+
+	LANG=es_ES.UTF-8
+	LANGUAGE=es_ES.UTF-8
+	LC_ALL=es_ES.UTF-8
+	...
+
+You can also check the environment values used by systemd:
+
+	systemctl show-environment
+
+
+✅ Result
+
+- UTF-8 will be used as the default encoding.
+- All users, services, scripts and sessions will correctly display
+  international text.
+- Interoperability with cluster nodes in any language is ensured.
+- Compatible with modern terminals, SSH, screen, tmux, JSON, databases, etc.
+
+EA3CV  ea3cv@cronux.net
+18 July 2025

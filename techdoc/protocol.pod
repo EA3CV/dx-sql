@@ -1,0 +1,509 @@
+# -*- perl -*-
+=head1 NAME
+
+Aranea Orthogonal Communications Protocol 
+
+$Revision$
+
+=head1 SYNOPSIS
+
+ <Origin>,<Group>,<TimeSeq>,<Hop>[,<From>]|<Tag>,<Data>...
+
+=head1 ABSTRACT
+
+For many years DX Clusters have used a protocol which was designed 
+for a non-looped tree ofL</Node>s. This environment has probably never, reliably, 
+been achieved in practice; certainly not recently.
+
+There have always been loops, sometimes bringing the network to its 
+knees. In modern usage, both in order to get some resilience and also
+to expedite information flow, we use internet based, deliberately
+looped networks with filtering. Whilst this works, after a fashion, there 
+are all sorts of problems that the current PC protocol can never
+address.
+
+This document 
+describes a complete replacement for the PC protocol. It allows a
+fully looped network, is inherently extensible and should be simple
+to implement (especially in perl).
+
+All implementations shall use b<only> this protocol
+for inter-node communications. 
+
+=head1 DESCRIPTION
+
+This protocol is
+designed to be an extensible basis for any type of one -> many
+"instant" line-based communications tasks.
+
+The protocol is designed to be flood routed in a meshed network in
+as efficient a manner as possible. The reason we have chosen this
+mechanism is that most L</Messages> need to be broadcast to allL</Node>s.
+
+Experience has shown thatL</Node>s will appear and (more infrequently) 
+disappear without much (or any) notice. 
+Therefore, the constantly changing and uncoordinated
+nature of the network doesn't lend itself to fixed routing policies. Therefore,
+whilst metrics and routing tables (more like routing hint tables) will be 
+built up over time, an aggressive aging algorithm will also be employed to prevent
+a lot of stale routing information being retained.
+
+Having said that: where routes have
+been learned through past traffic, and this data is recent, then direct routing should be used.
+Those L</Messages> that could be routed (likely to be mainly single line one to 
+one "talk" L</Messages>) that, anyway,
+happen sufficiently infrequently that, should they need to be flood routed
+(because no route has been learned yet), it is a small cost overall.
+
+=head1 Messages
+
+A message is a single line of UTF8 encoded and HTTP escaped text 
+terminated in the standard internet manner with a <CR><LF>. 
+
+Each message consists of a L</Routing Section> and a L</Command Section>. 
+The two sections are separated with the '|' character. 
+It follows that these
+characters (as well as non-printable characters, <CR>, <LF> and
+a small number of other reserved characters)
+can only be sent escaped. This is described further in the 
+L</Command Section> and L</Fields>.
+
+Most of this document is concerned with the L</Routing Section>, however
+some L</Standard Commands> which all implementations should issue and
+must accept are described.
+
+=head1 Applications
+
+In the past messaging applications such as DX Cluster software have maintained
+a fairly strict division between L</Node>s and L</User>s. This protocol attempts
+to get away from that by deliberately blurring (or, in some cases, removing) 
+any distinction between the two. 
+
+Applications that use this protocol are essentially all peers and therefore the
+only real difference between L</Node>s and L</User>s is that a node has one or more 
+listeners running that will,
+potentially, allow incoming connections from other L</Node>s, L</Endpoint>s or L</User>s. These 
+routable entities are called L</Terminal>s.  
+
+Any application that is a sink and/or source of data; is capable of obeying
+the protocol message construction rules and understands how to deduplicate incoming messages
+correctly can operate as a routeable entity or L</Terminal> in this protocol. It is called an L</Endpoint>.
+
+An L</Endpoint> is called a L</Node> if it accepts connections from L</Endpoint>s and is 
+prepared to route messages on their behalf to other L</Node>s or L</Endpoint>s. In addition it
+may provide some other, usually simpler, interface (eg simple telnet access) for direct user access. Acting
+in the protocol, on their behalf. 
+
+The concept of an L</Endpoint> has been invented because modern clients are 
+capable of being more intelligent than simple
+character based connections such as telnet or ax25. They also wish to be able to
+distinguish between the various classes of message, such as: DX spots, 
+announces, talk, logging info etc. It is a pain to have to do it, as now,
+by trying to make sense of the (slightly different for each piece of node 
+software) human readable "user" version of the output. Far better to pass on
+regular, specified, easily computer decodable versions of the message,
+(i.e. in this protocol) and leave
+the human presentation to the application.
+
+It also helps to modularise the various interfaces that may be implemented such 
+as the  legacy, character based connections of existing PC protocol based nodes. 
+They should be treated
+as local clients, in fact as L</User>s, B<not> as peers in this protocol. It is likely that, in order
+to do this, some extra L</Tag>s will need to be defined at application level. 
+
+=head1 Definitions
+
+In this document we use a number of terms that need to be defined.
+
+=head2 Terminal
+
+A L</Terminal> is a routable entity, in other words: a callsign or service that can be routed 
+to, that lives at one or a few L</Node>s.  
+
+=head2 User
+
+A L</User> is a connection to a L</Node> (that allows such connections)
+that does not occur in protocol. All L</User>s shall be identified with a name
+of up to 12 characters in the set [-0-9A-Z_]. All messages have to be routed via the 
+L</Node> to which this L</User> is connected. 
+
+=head2 Endpoint
+
+An L</Endpoint> is a connection to a L</Node> that uses the protocol. From a routing point of
+view, it is indistiguishable from a L</Node>. The L</Endpoint> is responsible for creating and decoding
+well formed protocol messages. An L</Endpoint> does not route beyond the immediate L</Node>(s) to
+which it is connected. It may also be a L</Service> connected to a L</Node> which provides some 
+addressable service (such as a database) that can be queried.
+
+=head2 Node
+
+A L</Node> is connected to other L</Node>s. It is responsible for routing messages in protocol
+from other L</Node>s or L</Endpoint>s, whether directly connected or not. Optionally, a L</Node>
+may provide other interfaces, such as direct L</User> connections or legacy PC protocol speaking
+DX Clusters. 
+
+=head2 Channel
+
+A L</Channel> is a L</Group> address that is not a L</Terminal>. It is (unless qualified by a L</Terminal>)
+broadcast on all a L</Node>s interfaces unless preventing by some filtering or other local policy on 
+that L</Node>.
+
+=head2 Service
+
+A L</Service> is application that either plugs into or connects as an L</Endpoint> to a L</Node>. It is an
+application that, in effect, is a database. In other words: queries are sent to the L</Service> and it sends
+back a reply.
+
+=head1 Routing Section
+
+The application that implements this protocol is essentially a line
+oriented message router. One line equals one message. Each line is
+effectively a datagram. 
+
+It is assumed thatL</Node>s are connected to
+each other using a "reliable" streaming protocol such as TCP/IP or
+AX25. Having said that: in context, L</Messages> in this protocol could be 
+multi/broadcast, either "as is" or wrapped in some other framing
+protocol. 
+
+Although the physical transport between L</Node>s is reliable, the actual message
+is unreliable, because this is an unreliable, best effort, "please route my packets
+through your node" protocol. There is no guarantee that a message
+will get to the other side of a mesh of L</Node>s. There may be a
+discontinuity either caused by outage or deliberate filtering. 
+
+However, as it is envisaged that most L</Messages> will be flood routed or,
+in the case of directed L</Messages> (those that have a L</Group> containing a L</Terminal> of some kind)
+down some/most/all interfaces showing a route for that
+direction, it is unlikely that L</Messages> will be lost in practice.
+
+Assuming that there is a path between all the L</Node>s in a network, then it is guaranteed
+that a message will be delivered everywhere, eventually. It is possible (indeed likely) that 
+copies of  a message
+will arrive at L</Node>s more than once. L</Node>s are responsible for deduplicating those messages
+using the information in the L</Routing Section>.
+
+=head2 Field Description
+
+All fields in the L</Routing Section> are compulsory except the L</From> field. If it is missing
+so is the separating comma.  
+
+The L</Hop> field is incremented on receipt of a message on a node.
+
+Fields are separated by the comma ',' character with the last field 
+required followed by the vertical bar '|' character.
+
+The characters allowed in the routing section are restricted. Any 
+invalid characters in any field will cause the whole message to be
+silently dropped.
+
+More detailed descriptions of the fields follow:
+
+=over
+
+=item B<Origin>
+
+This is a compulsory field. It is the name of the originating node.
+The field can contain up to 12 characters in the set [-A-Z0-9_/] in
+any order. Higher layers may restrict this further.
+
+The field must not be changed by any other node.
+
+=item B<Group>
+
+This is the Group (or Channel) to be used for this data. It is compulsory.  
+
+It is a string of up to 12 characters 
+in the set [-A-Z0-9_/] in any order. 
+
+Optionally, for extra routing to
+a particular L</Terminal> connected at a specific L</Node>, or even a
+particular L</Terminal> in a L</Group>, 
+it may have another 12 character 
+string in the same set, concatenated with the first string. The two strings are separated by a ':'
+character. For example:
+
+  DX                        # the DX group
+  GB7DJK                    # the node GB7DJK
+  G1TLH                     # the user or endpoint G1TLH
+  GB7DJK:G1TLH              # the user G1TLH at GB7DJK
+  DX:G1TLH                  # the user G1TLH in the DX group
+
+This field can contain either a L</Terminal> or some other string which is interpreted
+as broadcastable group address. Any message that has a L</Group> that is not recognised as a L</Terminal> must
+be broadcast.
+
+This means that messages to callsigns, for whom no specific routing information is available,
+will be found by means of a broadcast. Hopefully this will cause some kind of activity o.b.o
+that callsign will allow routing tables to be gathered that narrow down the scope of any future
+message to that callsign through the network. 
+
+Remember that not all L</Node>s may pass every L</Group> field, depending on local policy.
+
+=item B<TimeSeq>
+
+This is a compulsory field. It is a 10 hexadecimal digit string which
+consists of a day no (1-31), 
+a flag to indicate NTP syncronisation in use,
+seconds within that day (0-86399) [total of 6 hex digits] 
+that are concatenated with a sequence number (0-65535)
+[4 hex digits] making the total of 10 hexadecimal digits.
+
+The date portion is constructed as:
+
+  my $date = ((((gmtime)[3] << 1) | $ntpflag) << 18) |  (time % 86400);
+
+The sequence number is simply an unsigned short (or 16 bit) number
+starting at 0. 
+
+Each message originated at this node will increment the sequence
+number.
+
+=item B<Hop>
+
+This is a compulsory field. It is the number of hops from the 
+originating node. It is incremented immediately on receipt and
+before determining its value. 
+
+So the originating node sends a message with a L</Hop> of 0, the
+neighbouring nodes must increment this field before passing
+it on to higher layers for onward processing.
+
+Implementations may have an upper limit to this field and may
+silently drop incoming L</Messages> with a L</Hop> count greater than the
+limit.
+
+=item B<From>
+
+The L</From> field is optional. When present, it represents a L</Terminal> at
+the originating L</Node>. If it is missing then either it is not relevant or it
+is assumed to be the L</Origin>. 
+
+=back 
+
+=head2 Routing
+
+It is assumed that nodes will be connected in a looped network with
+more than one route available (in many cases) to another node.
+
+In anycase, most traffic is not directed, but broadcast to all users
+on all nodes.
+
+Each message is uniquely identified by the (L</Origin>,L</TimeSeq>) 
+tuple. The basic system will learn which interfaces can see what nodes
+by looking at the tuple and merging that with the L</Hop> count. 
+Each interface remembers the latest L</TimeSeq> with the lowest L</Hop>
+for each L</Origin> that arrives on that interface. It also remembers
+the number of L</Messages> for that L</Origin> that has been received on
+that interface.
+
+Any message for onward broadcast is duplicated and sent out on all
+interfaces that it did not come in on. 
+
+Any message that is directed to a particular node will be sent out on
+the "best" interface based on routing information gathered so far. If there
+is more than one possible route then, depending on network or local
+policy, the message may be duplicated and sent on other interfaces
+as well.
+
+=head2 DeDuplication
+
+On receipt of a message, its unique tuple (L</Origin>,L</TimeSeq>) is
+checked against a hash table. If it exists: the message is silently
+dropped. If it does not exist in the hash table then the tuple is
+added.
+
+The hash table is periodically cleaned, removing tuples that 
+have expired. The length of time a tuple remains in the hash table
+is implementation dependant but could easily be several days, if
+required.
+
+This mechanism only ensures that a message broadcast around the network
+travels the least distance and through the fewest nodes possible. It
+is up to higher layers to make sure that data carried is not, itself,
+duplicated!
+
+=head2 Examples
+
+ # on link startup from GB7BAA (both sides hello)
+ GB7TLH,ROUTE,3D02350001,0|HELLO,Aranea,1.2,24.123
+ GB7BAA,ROUTE,3D02355421,1|HELLO,Aranea,1.1,23.245
+
+ # on user startup to GB7TLH
+ GB7TLH,ROUTE,3D042506F2,0,G1TLH|HELLO,PClient,1.3
+
+ # on user disconnection
+ GB7TLH,ROUTE,3D9534F32D,0,G1TLH|BYE
+
+ # a talk (actually 'text') message to a user (some distance away
+ # from the origin node)
+ GB7TLH,G8TIC,3D03450019,3,G1TLH|T,Hiya Mike whats happening?
+
+ # a talk/chat/text message to a Group
+ GB7TLH,VHF,0413525F23,2,G1TLH|T,2m is opening on MS
+
+ # a ping to find the whereabouts and distance of a user from a node
+ # the hex number on the end is the ping ID
+ GB7TLH,G7BRN,1512346543,0,G1TLH|PING,9F4D 
+
+ # this effectively asks whether the user is on-line on a particular node
+ GB7TLH,GB7BAA:G7BRN,1512346543,0,G1TLH|PING,35DE
+
+ # A possible reply, same ID as ping followed by the no of hops on the 
+ # ping that was received thus telling you how far away it is.
+ GB7BAA,G1TLH,1512450534,3,G7BRN|PONG,35DE,3 
+
+
+=head1 Command Section
+
+The L</Command Section> of the message contains the actual data being
+passed. It is called the Command Section because all commands
+are identified with a L</Tag> each of which is implemented by 
+the software using this protocol. Each </Tag> (usually) is followed by one
+or more L</Fields>. 
+
+=head2 Tag
+
+The L</Tag> consists of string of uppercase letters and digits, starting
+with a leading, uppercase, letter. Tags should be as short as is meaningful.
+
+Valid tags would be:
+
+ DX
+ PC23
+ ANN
+
+Invalid tags include:
+
+ 1AAA
+ dx
+ Ann
+
+The L</Tag> is separated from its data L</Fields> by a comma ','. 
+
+=head2 Fields
+
+All fields
+in any subsequent data shall be separated by a comma ','.
+All fields shall
+be HTTP encoded such that reserved characters (comma ',', 
+vertical bar '|',
+percent '%', 
+equals '=' 
+and non printable characters less than 127 (or %7F in hex)
+[including newline and carraige return] are translated to
+their two hex digit equivalent preceeded by the percent '%' character.
+
+For example:
+
+ "%0D%0A" is "<carriage return><linefeed>".
+ "hello%2C there" is "hello, there"
+
+This is not standard CSV, fields are not quoted (delimited with either
+' or ").
+
+All national characters above 127 are UTF8 encoded in the
+standard perl 5.8.x way. It follows that all (perl) programs that
+are written according to this specification must say:
+
+ use UTF8;
+
+A message (or line) is terminated with <carriage return><linefeed>
+0x0d 0x0a. Incoming L</Messages> must be accepted even when terminated
+with just <linefeed>.
+
+Care must be taken to make sure that fields have any reserved characters
+encoded. In particular: it is perfectly permissible to have <linefeed>
+characters in a field - so long as they are escaped.
+
+Fields come in two styles: either simple fields (just containing
+data) or B<key>=B<value> pairs. Each pair must be separated from
+the next by a comma ','. The B<key> must consist of the set of
+characters [a-z0-9_] (ie lowercase letters, digits and underscore),
+with a leading letter. The B<value> must be HTTP encoded as
+specified above and can otherwise contain any character.
+
+There is no maximum size specified for a message. It is up to each
+implimentation to enforce one (if only for their own protection).
+
+=head2 Standard Commands
+
+There are a number of L</Standard Commands> which must be accepted by 
+all implementations.
+
+=over
+
+=item B<HELLO>
+
+ HELLO,<software name>,<version>,<build>,<comments>
+
+Command sent on connection to another node. Both sides send their information
+to the other. All the possible arguments are optional, although some of the
+arguments should be sent in order to help diagnose problems. This command is
+broadcast.
+
+=item B<BYE> 
+
+ BYE,<comments>
+
+Command sent to all connections when the software is shutting down. This is sent
+by the node just before shutdown occurs. This is really only used to help the
+network prune its routing tables. It isn't a requirement. The <comment> field
+is optional. 
+
+=item B<DISC>
+
+ DISC,<node name>,<comments>
+
+Command sent when a node has disconnected from this node. This message is sent when
+an interface shuts down. It need not be sent if a L<BYE> from an interface for
+that node has just been received. This command should be broadcast.
+
+The <node name> is mandatory and is the name of the interface that has just 
+disconnected.
+
+=item B<PING>
+
+ PING,<user>,<ping id>
+
+Command to send a ping to a node or user. This command is used both by the software
+and users to determine a) whether a node or user exists and b) how good the path is
+between them. 
+
+The <ping id> is a unique string which is usually the hexadecimal equivalent of an 
+integer that is incremented every time it is used. But it can be anything that
+will identify this ping using the tuple (L<Origin>,<ping id>) as unique.
+
+=item B<PONG>
+
+ PONG,<ping id>,<user>,<no of hops on ping>
+
+Command to reply to a ping. This is sent as a reply to an incoming ping command.
+The <ping id> is the one supplied and the <no of hops on ping> is the number of
+hops it took for the ping to arrive.
+
+=item B<T>
+
+ T,<text>
+
+All implementations must be able to send "text" (encoded as specified in 
+L</Fields>). There would be little point in doing all this otherwise!
+
+=back
+
+=head1 AUTHOR
+
+Dirk Koopman, G1TLH, E<lt>djk@tobit.co.ukE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2004-2005 by Dirk Koopman, G1TLH
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+$Revision$
+
+=cut
+
+
