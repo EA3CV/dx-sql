@@ -1,4 +1,4 @@
-otro:  package DXHash_SQL;
+package DXHash_SQL;
 
 use strict;
 use warnings;
