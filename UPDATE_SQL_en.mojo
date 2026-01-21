@@ -184,9 +184,10 @@ PROCEDURE TO SWITCH DATABASE BACKEND TO SQL
 
 5. Update the code from the dx-sql repository (mojo branch)
 
-   Only the code is updated; data and local configuration are preserved.
+   Only the code is updated. Existing files or directories that are not
+   present in the new branch will NOT be removed.
 
-   5.1 Git-managed installation
+   5.1 Git-managed installation (recommended)
 
      cd /spider
 
@@ -202,15 +203,24 @@ PROCEDURE TO SWITCH DATABASE BACKEND TO SQL
      cp -a local/DXVars.pm.pre-dx-sql local/DXVars.pm
 
 
-   5.2 Non-git installation
+   5.2 Non-git installation (additive copy, no deletions)
 
      cd /tmp
+     rm -rf dx-sql
      git clone -b mojo https://github.com/EA3CV/dx-sql.git dx-sql
 
-     rsync -a --delete \
-       --exclude '/local_data/' \
-       --exclude '/local/DXVars.pm' \
-       /tmp/dx-sql/ /spider/
+     cd /spider
+     cp -a local/DXVars.pm local/DXVars.pm.pre-dx-sql
+
+     Copy only new or modified files (NO deletions):
+       rsync -a \
+         --exclude '/local_data/' \
+         --exclude '/local/DXVars.pm' \
+         /tmp/dx-sql/ /spider/
+
+     Restore DXVars.pm:
+       cp -a local/DXVars.pm.pre-dx-sql local/DXVars.pm
+
 
 
 6. Modify DXVars.pm
