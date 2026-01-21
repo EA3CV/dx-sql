@@ -186,10 +186,10 @@ PROCEDIMIENTO PARA CAMBIAR EL BACKEND DE BD A SQL
 
 5. Actualizar el código desde el repositorio dx-sql (rama mojo)
 
-   Solo se actualiza el código; los datos y la configuración local se
-   conservan.
+   Solo se actualiza el código. NO se eliminarán ficheros o directorios
+   existentes que no estén en la rama nueva.
 
-   5.1 Instalación gestionada con git
+   5.1 Instalación gestionada con git (recomendado)
 
      cd /spider
 
@@ -205,15 +205,23 @@ PROCEDIMIENTO PARA CAMBIAR EL BACKEND DE BD A SQL
      cp -a local/DXVars.pm.pre-dx-sql local/DXVars.pm
 
 
-   5.2 Instalación sin git
+   5.2 Instalación sin git (copia aditiva, sin borrados)
 
      cd /tmp
+     rm -rf dx-sql
      git clone -b mojo https://github.com/EA3CV/dx-sql.git dx-sql
 
-     rsync -a --delete \
-       --exclude '/local_data/' \
-       --exclude '/local/DXVars.pm' \
-       /tmp/dx-sql/ /spider/
+     cd /spider
+     cp -a local/DXVars.pm local/DXVars.pm.pre-dx-sql
+
+     Copiar solo lo nuevo o modificado (NO borrar nada):
+       rsync -a \
+         --exclude '/local_data/' \
+         --exclude '/local/DXVars.pm' \
+         /tmp/dx-sql/ /spider/
+
+     Restaurar DXVars.pm:
+       cp -a local/DXVars.pm.pre-dx-sql local/DXVars.pm
 
 
 6. Modificar DXVars.pm
