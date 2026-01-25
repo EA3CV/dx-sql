@@ -131,7 +131,8 @@ sub load_into {
 	my %seen;
 	while (my ($word) = $sth->fetchrow_array) {
 		my ($cleaned, $regex) = _process_word($word);
-		next unless $cleaned && !$seen{$cleaned}++;
+		next unless $cleaned && $regex;
+		next if $seen{$cleaned}++;
 		$in_ref->{$cleaned} = $regex;
 		push @$relist_ref, [ $cleaned, $regex ];
 		dbg("[BadWords_SQL] Loading $cleaned = $regex") if isdbg('badword');
@@ -206,16 +207,21 @@ sub check {
 	my %in;
 	$self->load_into(\%in, \@relist);
 
-	my $res;
-	foreach (@relist) {
-		$res .= qq{\\b(?:$_->[1]) |\n};
+	return () unless @relist;
+
+	my @parts;
+	for my $r (@relist) {
+		my $re = $r->[1] // next;
+		push @parts, "\\b(?:$re)";
 	}
-	$res =~ s/\s*\|\s*$//;
-	my $regex = qr/\b($res)/x;
+
+	return () unless @parts;
+
+	my $regex = qr/(?:@{[ join '|', @parts ]})/x;
 
 	my $s = uc $text;
 	my %uniq;
-	my @out = grep { ++$uniq{$_}; $uniq{$_} == 1 ? $_ : () } ($s =~ /($regex)/g);
+	my @out = grep { ++$uniq{$_} == 1 } ($s =~ /$regex/g);
 
 	dbg("[BadWords_SQL] check '$s' = '" . join(', ', @out) . "'") if isdbg('badword');
 	return @out;
@@ -223,8 +229,11 @@ sub check {
 
 sub _process_word {
 	my ($word) = @_;
+	return unless defined $word;
+
 	$word = uc $word;
 	$word =~ tr/01/OI/;
+
 	my $last = '';
 	my @chars;
 	for (split //, $word) {
@@ -233,11 +242,18 @@ sub _process_word {
 		push @chars, $_;
 	}
 
-	return undef unless @chars;
-	my $cleaned = join('', @chars);
-	return undef unless $cleaned =~ /^\w+$/;
+	return unless @chars;
 
-	my @leet = map { s/O/[O0]/g; s/I/[I1]/g; $_ } @chars;
+	my $cleaned = join('', @chars);
+	return unless $cleaned =~ /^\w+$/;
+
+	my @leet = map {
+		my $c = $_;
+		$c =~ s/O/[O0]/g;
+		$c =~ s/I/[I1]/g;
+		$c;
+	} @chars;
+
 	my $regex = join '+[\s\W]*', @leet;
 
 	return ($cleaned, $regex);
@@ -270,8 +286,6 @@ sub load {
 	close $fh;
 
 	dbg("[BadWords_SQL] $count new badwords added from badword.new");
-
-	#$self->_sync_if_changed($count);
 }
 
 sub _sync_if_changed {
