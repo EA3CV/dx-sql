@@ -13,17 +13,18 @@ my $json = DXJSON->new->indent(1);
 my $table = 'filters';
 
 sub new {
-	my ($class, $sort, $call, $flag) = @_;
-	$flag = $flag ? "in_" : "";
-	my $self = {
-		sort    => $sort,
-		name    => "$flag$call.pl",
-		filters => {},
-	};
-	bless $self, $class;
+    my ($class, $sort, $call, $flag) = @_;
+    $flag = $flag ? "in_" : "";
+    my $self = {
+        sort    => $sort,
+        name    => "$flag$call.pl",
+        filters => {},
+    };
+    bless $self, $class;
 
-	$self->_load_from_db();
-	return $self;
+    $self->_load_from_db();
+    $self->_compile_all();
+    return $self;
 }
 
 sub _get_dbh {
@@ -170,43 +171,58 @@ sub compile {
 }
 
 sub write {
-	my $self = shift;
-	my $dbh = _get_dbh();
-	return "[Filter_SQL] Error no DBH" unless $dbh;
+    my $self = shift;
+    my $dbh = _get_dbh();
+    return "[Filter_SQL] Error no DBH" unless $dbh;
 
-	(my $list_name = $self->{name}) =~ s/\.pl$//;
+    (my $list_name = $self->{name}) =~ s/\.pl$//;
 
-	my $sth_del = $dbh->prepare("DELETE FROM $table WHERE list_name = ? AND sort = ?");
-	$sth_del->execute($list_name, $self->{sort});
+    my $sth_del = $dbh->prepare("DELETE FROM $table WHERE list_name = ? AND sort = ?");
+    $sth_del->execute($list_name, $self->{sort});
 
-	my $sth_ins = $dbh->prepare("INSERT INTO $table (list_name, sort, filter_key, rule_type, user_expr, asc_expr) VALUES (?, ?, ?, ?, ?, ?)");
-	for my $key ($self->getfilkeys) {
-		for my $rtype (qw(reject accept)) {
-			next unless $self->{filters}{$key}{$rtype};
-			my $rule = $self->{filters}{$key}{$rtype};
-			$sth_ins->execute($list_name, $self->{sort}, $key, $rtype, $rule->{user}, $rule->{asc});
-		}
-	}
-	$dbh->disconnect;
+    my $sth_ins = $dbh->prepare("INSERT INTO $table (list_name, sort, filter_key, rule_type, user_expr, asc_expr) VALUES (?, ?, ?, ?, ?, ?)");
+    for my $key ($self->getfilkeys) {
+        for my $rtype (qw(reject accept)) {
+            next unless $self->{filters}{$key}{$rtype};
+            my $rule = $self->{filters}{$key}{$rtype};
+            $sth_ins->execute($list_name, $self->{sort}, $key, $rtype, $rule->{user}, $rule->{asc});
+        }
+    }
+    $dbh->disconnect;
+
+    # (opcional) recompilar este objeto en memoria
+    $self->_compile_all() if $self->can('_compile_all');
+
+    return undef;
 }
 
 sub delete {
-	my ($sort, $call, $flag, $fno, $dxchan) = @_;
-	my $flag_prefix = $flag ? 'in_' : '';
-	my $name = "$flag_prefix$call";
-	$name =~ s/\.pl$//;
+    my ($sort, $call, $flag, $fno, $dxchan) = @_;
 
-	my $dbh = _get_dbh();
-	return unless $dbh;
+    my $flag_prefix = $flag ? 'in_' : '';
+    my $name = "$flag_prefix$call";
+    $name =~ s/\.pl$//;
 
-	if ($fno eq 'all') {
-		my $sth = $dbh->prepare("DELETE FROM $table WHERE list_name = ? AND sort = ?");
-		$sth->execute($name, $sort);
-	} else {
-		my $sth = $dbh->prepare("DELETE FROM $table WHERE list_name = ? AND sort = ? AND filter_key = ?");
-		$sth->execute($name, $sort, "filter$fno");
-	}
-	$dbh->disconnect;
+    my $dbh = _get_dbh();
+    return "[Filter_SQL] Error no DBH" unless $dbh;
+
+    if ($fno eq 'all') {
+        my $sth = $dbh->prepare("DELETE FROM $table WHERE list_name = ? AND sort = ?");
+        $sth->execute($name, $sort);
+    } else {
+        my $sth = $dbh->prepare("DELETE FROM $table WHERE list_name = ? AND sort = ? AND filter_key = ?");
+        $sth->execute($name, $sort, "filter$fno");
+    }
+
+    $dbh->disconnect;
+
+    # --- refrescar filtro en memoria para el canal actual ---
+    if ($dxchan) {
+        my $in = $flag ? 'in' : '';
+        Filter::load_dxchan($dxchan, $sort, $in);
+    }
+
+    return undef;  # éxito
 }
 
 sub it {
@@ -247,15 +263,52 @@ sub print {
 }
 
 sub install {
-	my ($self, $force, $dxchan) = @_;
+    my ($self, $remove, $dxchan) = @_;
 
-	my $filepath = "$main::root/filter/$self->{sort}/$self->{name}";
-	if (-e $filepath) {
-		unlink $filepath;
-		dbg("[Filter_SQL] Removed legacy file: $filepath") if $force;
-	}
+    # Si existe legacy file, borrarlo (opcional)
+    my $filepath = "$main::root/filter/$self->{sort}/$self->{name}";
+    unlink $filepath if -e $filepath;
 
-	$self->write;
+    # Guardar en DB (y dejar este objeto compilado)
+    my $err = $self->write;
+    return $err if $err;
+
+    # --- refrescar en memoria ---
+    my $name = uc $self->{name};
+    my $sort = $self->{sort};
+    my $in = "";
+    $in = "in" if $name =~ s/^IN_//;
+    $name =~ s/\.PL$//;
+
+    my @dxchan_list;
+    if ($name eq 'NODE_DEFAULT') {
+        @dxchan_list = DXChannel::get_all_nodes();
+    } elsif ($name eq 'USER_DEFAULT') {
+        @dxchan_list = DXChannel::get_all_users();
+    } elsif ($dxchan) {
+        push @dxchan_list, $dxchan;
+    } else {
+        my $c = DXChannel::get($name);
+        push @dxchan_list, $c if $c;
+    }
+
+    for my $ch (@dxchan_list) {
+        my $n = "$in" . lc($sort) . "filter";
+        $ch->{$n} = undef if $remove;          # “delete”
+        Filter::load_dxchan($ch, $sort, $in);  # recargar desde DB
+    }
+
+    return undef;
+}
+
+sub _compile_all {
+    my $self = shift;
+    for my $key ($self->getfilkeys) {
+        for my $rtype (qw(reject accept)) {
+            next unless $self->{filters}{$key}{$rtype} && defined $self->{filters}{$key}{$rtype}{asc};
+            $self->compile($key, $rtype);
+        }
+    }
 }
 
 1;
