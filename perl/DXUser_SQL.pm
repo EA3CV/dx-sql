@@ -411,7 +411,7 @@ sub put {
 	my $current = $sth->fetchrow_hashref;
 
 	unless ($current) {
-		# No existe: insertar normalmente
+		# No existe (o carrera): UPSERT para evitar Duplicate entry
 		my @columns = @FIELDS;
 		my @values;
 
@@ -427,12 +427,23 @@ sub put {
 			}
 		}
 
-		my $sql = "INSERT INTO `$table` (" . join(",", map { "`$_`" } @columns) .
-				  ") VALUES (" . join(",", ("?") x @columns) . ")";
+		my $sql;
+		if ($main::db_backend eq 'mysql') {
+			# Idempotente: si ya existe, actualiza y NO revienta
+			$sql = "INSERT INTO `$table` (" . join(",", map { "`$_`" } @columns) .
+				   ") VALUES (" . join(",", ("?") x @columns) . ")" .
+				   " ON DUPLICATE KEY UPDATE " .
+				   join(", ", map { "`$_`=VALUES(`$_`)" } @columns);
+		} else {
+			# SQLite: REPLACE = DELETE + INSERT (idempotente)
+			$sql = "REPLACE INTO `$table` (" . join(",", map { "`$_`" } @columns) .
+				   ") VALUES (" . join(",", ("?") x @columns) . ")";
+		}
+
 		my $sth2 = $dbh->prepare($sql);
 		$sth2->execute(@values);
 
-		print "[DXUser_SQL] Inserted $call\n" if $main::dxdebug;
+		print "[DXUser_SQL] Upserted $call\n" if $main::dxdebug;
 		return 1;
 	}
 
