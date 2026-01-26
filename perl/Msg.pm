@@ -360,29 +360,61 @@ sub _close_it
 
 sub _send_stuff
 {
-	my $conn = shift;
-	my $rq = $conn->{outqueue};
+    my $conn = shift;
+    my $rq   = $conn->{outqueue};
     my $sock = $conn->{sock};
-	return unless defined $sock;
-	return if $conn->{disconnecting};
-	
-	while (@$rq) {
-		my $data = shift @$rq;
-		my $lth = length $data;
-		my $call = $conn->{call} || 'none';
-		if (isdbg('raw')) {
-			dbgdump('raw', "$call send $lth:", $data);
-		}
-		if (defined $sock) {
-			$sock->write($data);
-			$total_out += $lth;
-			$conn->{dataout} += $lth;
-			++$conn->{linesout};
-			++$total_lines_out;
-		} else {
-			dbg("_send_stuff $call ending data ignored: $data");
-		}
-	}
+
+    return unless defined $sock;
+    return if $conn->{disconnecting};
+
+    while (@$rq) {
+        my $data = shift @$rq;
+        $data = '' unless defined $data;
+
+        my $call = $conn->{call} || 'none';
+
+        # Mojo::IOLoop::Stream->write() necesita BYTES.
+        # Si $data es Unicode (wide chars), lo convertimos a bytes con el encoding elegido.
+        if (utf8::is_utf8($data)) {
+
+            # Por defecto: compatibilidad legacy
+            # Puedes forzar por conexión: $conn->{out_encoding} = 'UTF-8';
+            # O global: $main::out_encoding = 'UTF-8';
+            my $enc = $conn->{out_encoding} || $main::out_encoding || 'ISO-8859-1';
+
+            my $bytes;
+            eval {
+                require Encode;
+                $bytes = Encode::encode($enc, $data, sub { '?' });
+                1;
+            } or do {
+                # Último recurso: UTF-8 en bytes (evita crash)
+                eval {
+                    require Encode;
+                    $bytes = Encode::encode('UTF-8', $data);
+                    1;
+                };
+            };
+
+            $data = defined $bytes ? $bytes : $data;
+        }
+
+        my $lth = length $data;
+
+        if (isdbg('raw')) {
+            dbgdump('raw', "$call send $lth:", $data);
+        }
+
+        if (defined $sock) {
+            $sock->write($data);
+            $total_out += $lth;
+            $conn->{dataout} += $lth;
+            ++$conn->{linesout};
+            ++$total_lines_out;
+        } else {
+            dbg("_send_stuff $call ending data ignored: $data");
+        }
+    }
 }
 
 sub send_now {
@@ -601,4 +633,3 @@ sub DESTROY
 1;
 
 __END__
-
