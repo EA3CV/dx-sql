@@ -13,7 +13,7 @@ use File::Copy qw(copy move);
 #$main::dxdebug = 1;
 
 my $dbh;
-my $json = JSON->new->canonical(1);
+my $json  = JSON->new->canonical(1);
 my $table = 'users';
 
 # Field list
@@ -55,7 +55,7 @@ sub init {
 
 	} else {
 		my $mysql_db = $main::mysql_db;
-		$dsn = "DBI:mysql:host=$main::mysql_host";
+		$dsn  = "DBI:mysql:host=$main::mysql_host";
 		$user = $main::mysql_user;
 		$pass = $main::mysql_pass;
 
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS `$table` (
   `addr` TEXT DEFAULT NULL,
   `alias` VARCHAR(16) DEFAULT NULL,
   `annok` TINYINT(1) DEFAULT 1,
-  `autoftx` TINYINT(1) DEFAULT 0,
+  `autoftx` TINYINT(1) NOT NULL DEFAULT 1,
   `bbs` VARCHAR(32) DEFAULT NULL,
   `bbsaddr` VARCHAR(32) DEFAULT NULL,
   `believe` LONGTEXT DEFAULT NULL,
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS `$table` (
   `connlist` LONGTEXT DEFAULT NULL,
   `dxok` TINYINT(1) DEFAULT 1,
   `email` VARCHAR(128) DEFAULT NULL,
-  `ftx` TINYINT(1) DEFAULT 0,
+  `ftx` TINYINT(1) NOT NULL DEFAULT 1,
   `group` LONGTEXT DEFAULT NULL,
   `hmsgno` INT(11) DEFAULT NULL,
   `homenode` VARCHAR(64) DEFAULT NULL,
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS `$table` (
   `addr` TEXT,
   `alias` TEXT,
   `annok` INTEGER DEFAULT 1,
-  `autoftx` INTEGER DEFAULT 0,
+  `autoftx` INTEGER DEFAULT 1,
   `bbs` TEXT,
   `bbsaddr` TEXT,
   `believe` TEXT,
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS `$table` (
   `connlist` TEXT,
   `dxok` INTEGER DEFAULT 1,
   `email` TEXT,
-  `ftx` INTEGER DEFAULT 0,
+  `ftx` INTEGER DEFAULT 1,
   `group` TEXT,
   `hmsgno` INTEGER,
   `homenode` TEXT,
@@ -324,6 +324,8 @@ sub alloc {
 		K              => 0,
 		annok          => 1,
 		dxok           => 1,
+		ftx            => 1,
+                autoftx        => 1,
 		rbnseeme       => 0,
 		wantann        => 1,
 		wantann_talk   => 1,
@@ -359,6 +361,10 @@ sub put {
 	my $call = uc $self->{call};
 	return unless $call;
 
+        # Ensure non-null defaults for NOT NULL columns
+        $self->{ftx}     = 1 unless defined $self->{ftx};
+        $self->{autoftx} = 1 unless defined $self->{autoftx};
+
 	$self->{lastseen} = $main::systime unless $self->{lastseen};
 
 	my %json_fields = map { $_ => 1 } qw(
@@ -368,6 +374,11 @@ sub put {
 		email
 		group
 	);
+
+	# Normalizar ftx SIEMPRE antes de escribir
+	# (evita NULL, '', ' ' y valores raros)
+	$self->{ftx} = 1 unless defined $self->{ftx} && $self->{ftx} =~ /^[01]$/;
+        $self->{autoftx} = 1 unless defined $self->{autoftx} && $self->{autoftx} =~ /^[01]$/;
 
 	if ($main::bulk_import) {
 		# Optimización para inserción rápida (sin comprobaciones)
@@ -680,6 +691,9 @@ sub _import_from_user_json {
 				$data->{$k} = substr($data->{$k}, 0, $max);
 			}
 		}
+
+		# Normalizar ftx (por si viniera del JSON como null/vacío)
+		$data->{ftx} = 1 unless defined $data->{ftx} && $data->{ftx} =~ /^[01]$/;
 
 		my $user = bless $data, 'DXUser';
 		DXUser_SQL::put($user);
